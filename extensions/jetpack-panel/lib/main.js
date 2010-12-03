@@ -1,15 +1,26 @@
 const contextMenu = require("context-menu");
 const panels = require("panel");
+const data = require("self").data;
 
 var sharePanel = panels.add(panels.Panel({
-        width: 640,
-        height: 320,
-        contentURL: "http://linkdrop.caraveo.com:5000/designs/popup/",
-        onMessage: function(message) {
-          //require("tab-browser").addTab(message);
-        }
-      }
-));
+  width: 640,
+  height: 354,
+  contentURL: "http://linkdrop.caraveo.com:5000/designs/popup/",
+  contentScriptURL: [data.url("panel.js")],
+  contentScriptWhen: "ready",
+  onMessage: function(message) {
+    if (message.indexOf("close:") === 0) {
+      sharePanel.hide();
+    } else if (message.indexOf("settings:") === 0) {
+      sharePanel.hide();
+      require("tab-browser").addTab("http://linkdrop.caraveo.com:5000/settings/");
+    }
+    //else if (message.indexOf("height:") === 0) {
+    //    sharePanel.resize(sharePanel.width,
+    //                      Number(message.slice("height:".length, message.length)));
+    //}
+  }
+}));
 
 var f1ShareItem = contextMenu.Item({
   label: "Share Page...",
@@ -17,9 +28,6 @@ var f1ShareItem = contextMenu.Item({
                  '  postMessage(document.URL);' +
                  '});',
   onMessage: function (documentURL) {
-    //for(var i = 0; i < metas.length; i++) {
-    //  console.log(metas[i].getAttribute("property"))
-    //}
     sharePanel.show();
   }
 });
