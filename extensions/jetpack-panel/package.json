@@ -1,0 +1,10 @@
+{
+    "description": "This is my first package, it's tiny.", 
+    "author": "Mozilla Messaging (http://www.mozillamessaging.com/)", 
+    "url": "http://f1.mozillamessaging.com/", 
+    "dependencies": [
+        "jetpack-core"
+    ], 
+    "fullName": "Mozilla F1", 
+    "id": "jid0-5kune9NAgOmUmzISp6073wa8z4g"
+}
