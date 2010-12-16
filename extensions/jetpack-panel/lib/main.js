@@ -1,18 +1,22 @@
 const contextMenu = require("context-menu");
-const panels = require("panel");
+const pageMod = require("page-mod");
+const widgets = require("widget");
+const panel = require("panel");
 const data = require("self").data;
 const tabs = require("tabs");
 
-var sharePanel = panels.add(panels.Panel({
+var sharePanel = panel.Panel({
   width: 640,
   height: 354,
   contentURL: "http://linkdrop.caraveo.com:5000/designs/popup/",
-  contentScriptURL: [data.url("panel.js")],
+  contentScriptFile: [data.url("panel.js")],
   contentScriptWhen: "ready",
-  onMessage: function(message) {
-    if (message.indexOf("close:") === 0) {
+  onMessage: function(data) {
+    //console.log("sharePanel.onMessage: " + data);
+    message = JSON.parse(data);
+    if (message.action == "close") {
       sharePanel.hide();
-    } else if (message.indexOf("settings:") === 0) {
+    } else if (message.action == "settings") {
       sharePanel.hide();
       require("tab-browser").addTab("http://linkdrop.caraveo.com:5000/settings/");
     }
@@ -21,56 +25,45 @@ var sharePanel = panels.add(panels.Panel({
     //                      Number(message.slice("height:".length, message.length)));
     //}
   }
-}));
+});
 
-var f1ShareItem = contextMenu.Item({
-  label: "Share Page...",
-  contentScript: 'on("click", function (node, data) {' +
-                 '  postMessage(document.URL);' +
-                 '});',
-  onMessage: function (documentURL) {
-    sharePanel.show();
-
-    var doc = tabs.activeTab.contentDocument;
-    var data = { "url" : doc.URL }
-    var metas = [];
-    try {
-      metas = doc.querySelectorAll("meta[name]");
-      console.log("metas: " + metas.length);
-      for (var i = 0; i < metas.length; i++ ) {
-        var prop = metas[i].getAttribute("name");
-        data[prop] = metas[i].getAttribute("content");
+//Always data mine every page for the possible share data and push that data into
+// the share panel.
+// XXX This might have consiquences when we try to show more than one share panel
+pageMod.PageMod({
+  include: ["*"],
+  contentScriptFile: [data.url("jquery-1.4.2.min.js"), data.url("page.js")],
+  contentScriptWhen: 'ready',
+  contentScript: ["postMessage(getPageData());"],
+  onAttach: function onAttach(worker) {
+    worker.on('message', function(data) {
+      //console.log("worker: " + JSON.stringify(data));
+      //Workers are attached to every page load and we only want the main page
+      if (tabs.activeTab.url == data.url) {
+        sharePanel.postMessage(data);
       }
-    } catch (ignore) {}
-
-    try {
-      metas = doc.querySelectorAll("meta[property]");
-      console.log("metas: " + metas.length);
-
-      for (var i = 0; i < metas.length; i++ ) {
-        var prop = metas[i].getAttribute("property")
-        if (/^og:/.test(prop))
-          prop = prop.replace(/^og:/,"");
-        console.log(prop);
-        data[prop] = metas[i].getAttribute("content");
-      }
-    } catch (ignore) {}
-
-    try {
-      metas = doc.querySelectorAll("link[rel=image_src]");
-      console.log("metas: " + metas.length);
-
-      for (var i = 0; i < metas.length; i++ ) {
-        var prop = metas[i].getAttribute("rel")
-        console.log(prop);
-        data[prop] = metas[i].getAttribute("href");
-      }
-    } catch (ignore) {}
-
-
-    console.log("data: " + data);
-
-    sharePanel.postMessage(JSON.stringify(data));
+    });
   }
 });
-contextMenu.add(f1ShareItem);
+
+
+exports.main = function(options, callbacks) {
+
+  contextMenu.Item({
+    label: "Share Page...",
+    contentScript: "on('click', function(node, data) { " +
+                   "  postMessage(document.URL); " +
+                   "});",
+    onMessage: function (URL) {
+      sharePanel.show();
+    }
+  });
+
+  widgets.Widget({
+    label: "Mozilla F1",
+    contentURL: "http://f1.mozillamessaging.com/favicon.png",
+    panel: sharePanel
+  });
+
+  //callbacks.quit();
+};
