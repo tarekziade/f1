@@ -15,4 +15,4 @@ data/sessions
 ^grinder/.*\$py.class
 web-static
 web/share-0.1-dev.xpi
-data/
+^data/
