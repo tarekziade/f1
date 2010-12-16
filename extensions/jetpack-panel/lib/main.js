@@ -40,6 +40,9 @@ pageMod.PageMod({
       //console.log("worker: " + JSON.stringify(data));
       //Workers are attached to every page load and we only want the main page
       if (tabs.activeTab.url == data.url) {
+        if (!("og_image" in data) && !("image_src" in data)) {
+          data.image = tabs.activeTab.getThumbnail();
+        }
         sharePanel.postMessage(data);
       }
     });

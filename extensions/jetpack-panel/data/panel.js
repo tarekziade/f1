@@ -22,12 +22,14 @@ $("a.configureToggle").click(function (event) {
 //postMessage("height:" + document.body.offsetHeight);
 
 on('message', function(data) {
-  //console.log("panel.js:on(message): " + JSON.stringify(data));
+  console.log("panel.js:on(message): " + JSON.stringify(data));
 
   var metas = data;
   $(".pageTitle").text(metas.og_title || metas.title || "");
   $(".pageDescription").text(metas.og_description || metas.description || "");
-  $("img.thumb").attr("src", metas.og_image || metas.image || metas.image_src || "");
+  $("img.thumb").attr("src", metas.og_image || metas.image_src || metas.image || "");
+  $(".url").text(metas.canonical || metas.url || "").toggleClass("selected", (metas.shortlink || metas.shorturl || "").length <= 0);
+  $(".shorturl").text(metas.shortlink || metas.shorturl || "").toggleClass("selected", (metas.shortlink || metas.shorturl || "").length > 0);
 
 });
 

@@ -38,7 +38,19 @@ function getPageData() {
     //console.log("link[rel]: " + metas.length);
 
     for (var i = 0; i < metas.length; i++ ) {
-      var prop = metas[i].getAttribute("rel")
+      var prop = metas[i].getAttribute("rel").replace(/[:\s]/, "_");;
+      //console.log("link[" + prop + "]");
+      msg[prop] = unescapeXml(metas[i].getAttribute("href"));
+    }
+  } catch (err) { console.error(err); }
+
+  //Flickr!!!
+  try {
+    metas = document.querySelectorAll("link[rev=canonical]") || [];
+    //console.log("link[rel]: " + metas.length);
+
+    for (var i = 0; i < metas.length; i++ ) {
+      var prop = metas[i].getAttribute("id");
       //console.log("link[" + prop + "]");
       msg[prop] = unescapeXml(metas[i].getAttribute("href"));
     }
