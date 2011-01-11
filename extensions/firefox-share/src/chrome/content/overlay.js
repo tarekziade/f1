@@ -22,31 +22,38 @@
  * */
 
 'use strict';
-/*jslint indent: 2, es5: true, plusplus: false, onevar: false */
+/*jslint indent: 2, es5: true, plusplus: false, onevar: false, bitwise: false */
 /*global document: false, setInterval: false, clearInterval: false,
   Application: false, gBrowser: false, window: false, Components: false,
   Cc: false, Ci: false, PlacesUtils: false, gContextMenu: false,
   XPCOMUtils: false, ffshareAutoCompleteData: false, AddonManager: false,
-  BrowserToolboxCustomizeDone: false, InjectorInit: false, injector: false */
+  BrowserToolboxCustomizeDone: false, InjectorInit: false, injector: false,
+  getComputedStyle: false, gNavToolbox: false */
 
 var ffshare;
 var FFSHARE_EXT_ID = "ffshare@mozilla.org";
 (function () {
-
-  Components.utils.import("resource://ffshare/modules/ffshareAutoCompleteData.js");
-  Components.utils.import("resource://ffshare/modules/injector.js");
-  Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-  // This add-on manager is only available in Firefox 4+
-  try {
-    Components.utils.import("resource://gre/modules/AddonManager.jsm");
-  } catch (e) {
-  }
-
-  var slice = Array.prototype.slice,
+  var Cc = Components.classes,
+      Ci = Components.interfaces,
+      Cu = Components.utils,
+      xulNs = 'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul',
+      slice = Array.prototype.slice,
       ostring = Object.prototype.toString,
       empty = {}, fn,
       buttonId = 'ffshare-toolbar-button';
+
+  Cu.import("resource://ffshare/modules/ffshareAutoCompleteData.js");
+  Cu.import("resource://ffshare/modules/injector.js");
+  Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+
+  var info = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo); 
+  var majorVer = parseInt(info.version[0]);
+
+  // This add-on manager is only available in Firefox 4+
+  try {
+    Cu.import("resource://gre/modules/AddonManager.jsm");
+  } catch (e) {
+  }
 
   function getButton() {
     return document.getElementById(buttonId);
@@ -57,6 +64,16 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
     for (var prop in source) {
       if (!(prop in empty) && (!(prop in target) || override)) {
         target[prop] = source[prop];
+      }
+    }
+  }
+
+  //Allows setting multiple attributes, but using a simple JS
+  //object construction.
+  function setAttrs(node, obj) {
+    for (var prop in obj) {
+      if (obj.hasOwnProperty(prop)) {
+        node.setAttribute(prop, obj[prop]);
       }
     }
   }
@@ -74,7 +91,7 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
   }
 
   function error(msg) {
-    Components.utils.reportError('.' + msg); // avoid clearing on empty log
+    Cu.reportError('.' + msg); // avoid clearing on empty log
   }
 
   fn = {
@@ -120,82 +137,14 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
     }
   };
 
-  function StateProgressListener(tabFrame) {
-    this.tabFrame = tabFrame;
-  }
-
-  StateProgressListener.prototype = {
-    // detect communication from the iframe via location setting
-    QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIWebProgressListener,
-                                           Components.interfaces.nsISupportsWeakReference,
-                                           Components.interfaces.nsISupports]),
-
-    onStateChange: function (aWebProgress, aRequest, aStateFlags, aStatus) {
-      var flags = Components.interfaces.nsIWebProgressListener;
-      if (aStateFlags & flags.STATE_IS_WINDOW &&
-                 aStateFlags & flags.STATE_STOP) {
-        var status;
-
-        try {
-          status = aRequest.nsIHttpChannel.responseStatus;
-        } catch (e) {
-          //Could be just an invalid URL or not an http thing. Need to be sure to not endlessly
-          //load error page if it is already loaded.
-          if (this.tabFrame.shareFrame.contentWindow.location.href !== ffshare.errorPage) {
-            status = 1000;
-          } else {
-            status = 200;
-          }
-        }
-
-        if (status < 200 || status > 399) {
-          this.tabFrame.shareFrame.contentWindow.location = ffshare.errorPage;
-        } else {
-          this.tabFrame.shareFrame.contentWindow.wrappedJSObject.addEventListener("message", fn.bind(this, function (evt) {
-            //Make sure we only act on messages from the page we expect.
-            if (ffshare.prefs.share_url.indexOf(evt.origin) === 0) {
-              //Mesages have the following properties:
-              //name: the string name of the messsage
-              //data: the JSON structure of data for the message.
-              var message = evt.data, skip = false, topic, data;
-              try {
-                //Only some messages are valid JSON, only care about the ones
-                //that are.
-                message = JSON.parse(message);
-              } catch (e) {
-                skip = true;
-              }
-
-              if (!skip) {
-                topic = message.topic;
-                data = message.data;
-
-                if (topic && this.tabFrame[topic]) {
-                  this.tabFrame[topic](data);
-                }
-              }
-            }
-          }), false);
-        }
-      }
-    },
-
-    onLocationChange: function (aWebProgress, aRequest, aLocation) {},
-    onProgressChange: function (aWebProgress, aRequest, aCurSelfProgress, aMaxSelfProgress, aCurTotalProgress, aMaxTotalProgress) {},
-    onSecurityChange: function (aWebProgress, aRequest, aState) {},
-    onStatusChange: function (aWebProgress, aRequest, aStatus, aMessage) {
-        //log("onStatus Change: " + aRequest.nsIHttpChannel.responseStatus + ": " + aRequest.loadFlags + ", " + aRequest + ", " + aMessage);
-    }
-  };
-
   var firstRunProgressListener = {
-    QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIWebProgressListener,
-                                           Components.interfaces.nsISupportsWeakReference,
-                                           Components.interfaces.nsISupports]),
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
+                                           Ci.nsISupportsWeakReference,
+                                           Ci.nsISupports]),
 
     onStateChange: function (aWebProgress, aRequest, aStateFlags, aStatus) {
       // maybe can just use onLocationChange, but I don't think so?
-      var flags = Components.interfaces.nsIWebProgressListener;
+      var flags = Ci.nsIWebProgressListener;
 
       // This seems like an excessive check but works very well
       if (aStateFlags & flags.STATE_IS_WINDOW &&
@@ -217,9 +166,9 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
   };
 
   var canShareProgressListener = {
-    QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIWebProgressListener,
-                                           Components.interfaces.nsISupportsWeakReference,
-                                           Components.interfaces.nsISupports]),
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
+                                           Ci.nsISupportsWeakReference,
+                                           Ci.nsISupports]),
 
     onLocationChange: function (aWebProgress, aRequest, aLocation) {
       ffshare.canShareURI(aLocation);
@@ -238,9 +187,9 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
   NavProgressListener.prototype = {
     // detect navigational events for the tab, so we can close
 
-    QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsIWebProgressListener,
-                                           Components.interfaces.nsISupportsWeakReference,
-                                           Components.interfaces.nsISupports]),
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
+                                           Ci.nsISupportsWeakReference,
+                                           Ci.nsISupports]),
 
     onLocationChange: function (/*in nsIWebProgress*/ aWebProgress,
                           /*in nsIRequest*/ aRequest,
@@ -262,22 +211,59 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
   TabFrame.prototype = {
 
     registerListener: function () {
-      var shareFrameProgress = this.shareFrame.webProgress;
-
-      this.stateProgressListener = new StateProgressListener(this);
-      shareFrameProgress.addProgressListener(this.stateProgressListener, Components.interfaces.nsIWebProgress.NOTIFY_STATE_WINDOW);
-
-      this.navProgressListener = new NavProgressListener(this);
-      gBrowser.getBrowserForTab(this.tab).webProgress.addProgressListener(this.navProgressListener, Components.interfaces.nsIWebProgress.NOTIFY_LOCATION);
+      var obs = Cc["@mozilla.org/observer-service;1"].
+                            getService(Components.interfaces.nsIObserverService);
+      obs.addObserver(this, 'content-document-global-created', false);
     },
 
     unregisterListener: function (listener) {
-      var shareFrameProgress = this.shareFrame.webProgress;
-      shareFrameProgress.removeProgressListener(this.stateProgressListener);
-      this.stateProgressListener = null;
+      var obs = Cc["@mozilla.org/observer-service;1"].
+                            getService(Ci.nsIObserverService);
+      obs.removeObserver(this, 'content-document-global-created');
+    },
 
-      gBrowser.getBrowserForTab(this.tab).webProgress.removeProgressListener(this.navProgressListener);
-      this.navProgressListener = null;
+    observe: function (aSubject, aTopic, aData) {
+      if (!aSubject.location.href) {
+        return;
+      }
+
+      // is this window a child of OUR XUL window?
+      var mainWindow = aSubject.QueryInterface(Ci.nsIInterfaceRequestor)
+                     .getInterface(Ci.nsIWebNavigation)
+                     .QueryInterface(Ci.nsIDocShellTreeItem)
+                     .rootTreeItem
+                     .QueryInterface(Ci.nsIInterfaceRequestor)
+                     .getInterface(Ci.nsIDOMWindow);
+      if (mainWindow !== window) {
+        return;
+      }
+
+      // listen for messages now
+      this.shareFrame.contentWindow.wrappedJSObject.addEventListener("message", fn.bind(this, function (evt) {
+        //Make sure we only act on messages from the page we expect.
+        if (ffshare.prefs.share_url.indexOf(evt.origin) === 0) {
+          //Mesages have the following properties:
+          //name: the string name of the messsage
+          //data: the JSON structure of data for the message.
+          var message = evt.data, skip = false, topic, data;
+          try {
+            //Only some messages are valid JSON, only care about the ones
+            //that are.
+            message = JSON.parse(message);
+          } catch (e) {
+            skip = true;
+          }
+
+          if (!skip) {
+            topic = message.topic;
+            data = message.data;
+
+            if (topic && this[topic]) {
+              this[topic](data);
+            }
+          }
+        }
+      }), false);
     },
 
     //Fired when a pref changes from content space. the pref object has
@@ -287,77 +273,120 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
     },
 
     hide: function () {
-      this.unregisterListener();
-      this.changeHeight(0, fn.bind(this, function () {
-        this.shareFrame.parentNode.removeChild(this.shareFrame);
-        this.shareFrame = null;
-      }));
-      this.visible = false;
+      this.panel.hidePopup();
     },
 
     createShareFrame: function (options) {
       options = options || {};
 
-      var browser = gBrowser.getBrowserForTab(this.tab),
-          iframeNode = null, url;
-      var notificationBox = gBrowser.getNotificationBox(browser);
+      var browser = gBrowser.getBrowserForTab(this.tab), url,
+          notificationBox = gBrowser.getNotificationBox(browser),
+          panel = document.createElement('panel'),
+          browserNode = document.createElement('browser');
 
-      if (iframeNode === null) {
-        //Create the iframe.
-        iframeNode = document.createElement("browser");
-
-        //Allow the rich autocomplete, something built into gecko.
-        iframeNode.setAttribute('autocompletepopup', 'PopupAutoCompleteRichResult');
-        //Use the Firefox global context menu so we get spellcheck and such
-        iframeNode.setAttribute("contextmenu", "contentAreaContextMenu");
-
-        iframeNode.className = 'ffshare-frame';
-        iframeNode.style.width = '100%';
-        iframeNode.style.height = '114px';
-        //Make sure it can go all the way to zero.
-        iframeNode.style.minHeight = 0;
-
-        mixin(options, {
-          version: ffshare.version,
-          title: this.getPageTitle(),
-          description: this.getPageDescription(),
-          medium: this.getPageMedium(),
-          url: gBrowser.currentURI.spec,
-          canonicalUrl: this.getCanonicalURL(),
-          shortUrl: this.getShortURL(),
-          previews: this.previews(),
-          siteName: this.getSiteName(),
-          prefs: {
-            system: ffshare.prefs.system,
-            bookmarking: ffshare.prefs.bookmarking,
-            use_accel_key: ffshare.prefs.use_accel_key
-          }
-        });
-
-        if (!options.previews.length && !options.thumbnail) {
-          // then we need to make our own thumbnail
-          options.thumbnail = this.getThumbnailData();
+      mixin(options, {
+        version: ffshare.version,
+        title: this.getPageTitle(),
+        description: this.getPageDescription(),
+        medium: this.getPageMedium(),
+        url: gBrowser.currentURI.spec,
+        canonicalUrl: this.getCanonicalURL(),
+        shortUrl: this.getShortURL(),
+        previews: this.previews(),
+        siteName: this.getSiteName(),
+        prefs: {
+          system: ffshare.prefs.system,
+          bookmarking: ffshare.prefs.bookmarking,
+          use_accel_key: ffshare.prefs.use_accel_key
         }
-        url = ffshare.prefs.share_url +
-                  '#options=' + encodeURIComponent(JSON.stringify(options));
+      });
 
-        iframeNode.setAttribute("type", "content");
-        iframeNode.setAttribute("src", url);
-        notificationBox.insertBefore(iframeNode, notificationBox.firstChild);
+      this.panel = panel;
+
+      //Add cleanup listener
+      this.panelHideListener = fn.bind(this, function (evt) {
+        this.unregisterListener();
+        this.panel.removeEventListener('popuphidden', this.panelHideListener, false);
+        this.panel.parentNode.removeChild(this.panel);
+        this.panel = null;
+        this.visible = false;
+      });
+
+      panel.addEventListener('popuphidden', this.panelHideListener, false);
+
+      if (!options.previews.length && !options.thumbnail) {
+        // then we need to make our own thumbnail
+        options.thumbnail = this.getThumbnailData();
       }
-      return (this.shareFrame = iframeNode);
+      url = ffshare.prefs.share_url +
+                '#options=' + encodeURIComponent(JSON.stringify(options));
+
+      setAttrs(panel, {
+        type: 'arrow',
+        level: 'top'
+      });
+
+      setAttrs(browserNode, {
+        type: 'content',
+        flex: '1',
+        src: 'about:blank',
+        autocompletepopup: 'PopupAutoCompleteRichResult',
+        contextmenu: 'contentAreaContextMenu',
+        'disablehistory': true
+      });
+
+      panel.appendChild(browserNode);
+      document.getElementById('mainPopupSet').appendChild(panel);
+
+      this.shareFrame = browserNode;
+      //browserNode.style.width = '640px';
+      //browserNode.style.height = '404px';
+      //Make sure it can go all the way to zero.
+      browserNode.style.minHeight = 0;
+
+      this.registerListener();
+
+      browserNode.setAttribute('src', url);
     },
 
     show: function (options) {
       var tabURI = gBrowser.getBrowserForTab(this.tab).currentURI,
-          tabUrl = tabURI.spec,
-          iframeNode;
+          tabUrl = tabURI.spec;
 
       if (!ffshare.isValidURI(tabURI)) {
         return;
       }
 
-      iframeNode = this.shareFrame || this.createShareFrame(options);
+      this.createShareFrame(options);
+      var button = document.getElementById("ffshare-toolbar-button");
+      // fx 4
+      if (majorVer >= 4) {
+        var position = (getComputedStyle(gNavToolbox, "").direction === "rtl") ? 'bottomcenter topright' : 'bottomcenter topleft';
+        this.panel.setAttribute('class', 'ffshare-panel');
+        this.panel.firstChild.setAttribute('class', 'ffshare-browser');
+        this.panel.openPopup(button, position, 0, 0, false, false);
+      } else {
+        // fx 3 doorhanger support
+        // if the button is to the right of th url bar, use ltr, otherwise rtl
+        this.panel.firstChild.setAttribute('class', 'ffshare-browser doorhanger-inner');
+        var navbar = document.getElementById('nav-bar');
+        var urlbar = document.getElementById('urlbar-container');
+        var first = null;
+        for (var c =0; c < navbar.childNodes.length; c++) {
+          if (navbar.childNodes[c] === urlbar || navbar.childNodes[c] === button) {
+            first = navbar.childNodes[c];
+            break;
+          }
+        }
+        if (first === button) {
+          this.panel.setAttribute('class', 'ffshare-panel doorhanger-rtl');
+          this.panel.showPopup(button, -1, -1, 'popup', 'bottomleft', 'topleft');
+        } else {
+          this.panel.setAttribute('class', 'ffshare-panel doorhanger-ltr');
+          this.panel.showPopup(button, -1, -1, 'popup', 'bottomright', 'topright');
+        }
+        this.panel.sizeToContent();
+      }
 
       if (ffshare.prefs.frontpage_url === tabUrl) {
         var browser = gBrowser.getBrowserForTab(this.tab);
@@ -367,22 +396,7 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
         browser.contentWindow.wrappedJSObject.dispatchEvent(evt);
       }
 
-      /*
-      //Figure out if CSS transitions can be used. Right now, trying to
-      //transition the height as the page loads is too choppy, and waiting
-      //for the iframe to load before doing the animation is too long to wait.
-      if ('MozTransition' in iframeNode.style) {
-        this.useCssTransition = true;
-        iframeNode.addEventListener("transitionend", fn.bind(this, 'onTransitionEnd'), true);
-      } else {
-        this.useCssTransition = false;
-      }
-      iframeNode.addEventListener('DOMContentLoaded', fn.bind(this, 'matchIframeContentHeight'), true);
-      */
-
       this.visible = true;
-
-      this.registerListener();
     },
 
     /**
@@ -404,35 +418,11 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
         var ios = Cc["@mozilla.org/network/io-service;1"].
                getService(Ci.nsIIOService);
         var nsiuri = ios.newURI(gBrowser.currentURI.spec, null, null);
-        var bmsvc = Components.classes["@mozilla.org/browser/nav-bookmarks-service;1"]
-                    .getService(Components.interfaces.nsINavBookmarksService);
+        var bmsvc = Cc["@mozilla.org/browser/nav-bookmarks-service;1"]
+                    .getService(Ci.nsINavBookmarksService);
         bmsvc.insertBookmark(bmsvc.unfiledBookmarksFolder, nsiuri, bmsvc.DEFAULT_INDEX, this.getPageTitle().trim());
 
         PlacesUtils.tagging.tagURI(nsiuri, tags);
-      }
-    },
-
-    changeHeight: function (height, onEnd) {
-
-      if (this.useCssTransition) {
-        this.onHeightEnd = onEnd;
-      }
-
-      this.shareFrame.style.height = height + 'px';
-
-      if (!this.useCssTransition && onEnd) {
-        onEnd();
-      }
-    },
-
-    matchIframeContentHeight: function () {
-      var height = this.shareFrame.contentDocument.documentElement.getBoundingClientRect().height;
-      this.changeHeight(height);
-    },
-
-    onTransitionEnd: function (evt) {
-      if (this.onHeightEnd) {
-        this.onHeightEnd();
       }
     },
 
@@ -496,16 +486,17 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
     // According to Facebook - (only the first 3 are interesting)
     // Valid values for medium_type are audio, image, video, news, blog, and mult.
     getPageMedium: function () {
-      var metas = gBrowser.contentDocument.querySelectorAll("meta[property='og:type']");
-      for (var i = 0; i < metas.length; i++) {
-        var content = metas[i].getAttribute("content");
+      var metas = gBrowser.contentDocument.querySelectorAll("meta[property='og:type']"),
+          i, content;
+      for (i = 0; i < metas.length; i++) {
+        content = metas[i].getAttribute("content");
         if (content) {
           return unescapeXml(content);
         }
       }
-      metas = gBrowser.contentDocument.querySelectorAll("meta[name='medium']")
-      for (var i = 0; i < metas.length; i++) {
-        var content = metas[i].getAttribute("content");
+      metas = gBrowser.contentDocument.querySelectorAll("meta[name='medium']");
+      for (i = 0; i < metas.length; i++) {
+        content = metas[i].getAttribute("content");
         if (content) {
           return unescapeXml(content);
         }
@@ -715,7 +706,7 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
         Application.prefs.setValue("extensions." + FFSHARE_EXT_ID + ".first-install", false);
 
         //Register first run listener.
-        gBrowser.getBrowserForTab(gBrowser.selectedTab).addProgressListener(firstRunProgressListener, Components.interfaces.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
+        gBrowser.getBrowserForTab(gBrowser.selectedTab).addProgressListener(firstRunProgressListener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
         this.addedFirstRunProgressListener = true;
       }
     },
@@ -730,8 +721,8 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
       } else {
         //Firefox before version 4.
         try {
-          var em = Components.classes["@mozilla.org/extensions/manager;1"]
-                   .getService(Components.interfaces.nsIExtensionManager),
+          var em = Cc["@mozilla.org/extensions/manager;1"]
+                   .getService(Ci.nsIExtensionManager),
               addon = em.getItemForID(FFSHARE_EXT_ID);
           ffshare.onInstallUpgrade(addon.version);
         } catch (e) {}
@@ -747,10 +738,10 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
 
       this.initKeyCode();
 
-      this.prefService = Components.classes["@mozilla.org/preferences-service;1"]
-                             .getService(Components.interfaces.nsIPrefService)
+      this.prefService = Cc["@mozilla.org/preferences-service;1"]
+                             .getService(Ci.nsIPrefService)
                              .getBranch("extensions." + FFSHARE_EXT_ID + ".")
-                             .QueryInterface(Components.interfaces.nsIPrefBranch2);
+                             .QueryInterface(Ci.nsIPrefBranch2);
 
       this.prefService.addObserver("", this, false);
 
@@ -789,8 +780,8 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
 
       //Taken from https://developer.mozilla.org/en/Code_snippets/Tabbed_browser
       function openAndReuseOneTabPerURL(url) {
-        var wm = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-                           .getService(Components.interfaces.nsIWindowMediator);
+        var wm = Cc["@mozilla.org/appshell/window-mediator;1"]
+                           .getService(Ci.nsIWindowMediator);
         var browserEnumerator = wm.getEnumerator("navigator:browser"),
             rect, browser, buttonNode;
 
@@ -898,7 +889,7 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
 
       if ("use_accel_key" === data) {
         try {
-          var pref = subject.QueryInterface(Components.interfaces.nsIPrefBranch);
+          var pref = subject.QueryInterface(Ci.nsIPrefBranch);
           ffshare.setAccelKey(pref.getBoolPref("use_accel_key"));
         } catch (e) {
           error(e);
@@ -987,21 +978,19 @@ var FFSHARE_EXT_ID = "ffshare@mozilla.org";
         selectedTab.ffshareTabFrame = tabFrame;
       }
 
-      if (tabFrame.visible) {
-        tabFrame.hide();
-      } else {
-        tabFrame.show(options);
-      }
+      tabFrame.show(options);
     }
   };
 
   if (!ffshare.prefs.share_url) {
     if (ffshare.prefs.system === 'dev') {
-      ffshare.prefs.share_url = 'http://linkdrop.caraveo.com:5000/share/';
+      ffshare.prefs.share_url = 'http://linkdrop.caraveo.com:5000/play/designs/popup/';
+    } else if (ffshare.prefs.system === 'devpopup') {
+      ffshare.prefs.share_url = 'http://linkdrop.caraveo.com:5000/play/designs/popup/';
     } else if (ffshare.prefs.system === 'staging') {
-      ffshare.prefs.share_url = 'https://f1-staging.mozillamessaging.com/share/';
+      ffshare.prefs.share_url = 'https://f1-staging.mozillamessaging.com/play/designs/popup/';
     } else {
-      ffshare.prefs.share_url = 'https://f1.mozillamessaging.com/share/';
+      ffshare.prefs.share_url = 'https://f1.mozillamessaging.com/play/designs/popup/';
     }
   }
 

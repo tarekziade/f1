@@ -30,7 +30,7 @@ except ImportError:
 
 setup(
     name='linkdrop',
-    version='0.1.6.1',
+    version='0.1.7',
     description='',
     author='',
     author_email='',
@@ -63,6 +63,7 @@ setup(
     entry_points="""
     [paste.app_factory]
     main = linkdrop.config.middleware:make_app
+    static = linkdrop.static:make_static
 
     [paste.filter_app_factory]
     csrf = linkdrop.csrf:make_csrf_filter_app

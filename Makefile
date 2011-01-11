@@ -1,3 +1,5 @@
+version := 0.1.7
+xpi_version := 0.7.3
 
 ifeq ($(TOPSRCDIR),)
   export TOPSRCDIR = $(shell pwd)
@@ -6,12 +8,10 @@ srcdir=$(TOPSRCDIR)/extensions/firefox-share/src/
 objdir=$(TOPSRCDIR)/extensions/firefox-share/dist/
 stage_dir=$(objdir)/stage
 xpi_dir=$(TOPSRCDIR)/web
-web_dir=$(TOPSRCDIR)/web
-static_dir=$(TOPSRCDIR)/web-static
+web_dir=$(TOPSRCDIR)/web/dev
+static_dir=$(TOPSRCDIR)/web/$(version)
 webbuild_dir=$(TOPSRCDIR)/tools/webbuild
 requirejs_dir=$(webbuild_dir)/requirejs
-
-version := 0.7.3
 
 ifeq ($(release_build),)
   xpi_type := dev
@@ -21,7 +21,7 @@ else
   update_url :=
 endif
 
-xpi_name := share-$(version)-$(xpi_type).xpi
+xpi_name := share-$(xpi_version)-$(xpi_type).xpi
 xpi_files := chrome.manifest chrome install.rdf defaults components modules
 dep_files := Makefile $(shell find $(srcdir) -type f)
 
@@ -71,9 +71,13 @@ web: $(static_dir)
 
 $(static_dir):
 	rsync -av $(web_dir)/ $(static_dir)/
-	cd $(webbuild_dir) && $(requirejs_dir)/build/build.sh share.build.js
-	cd $(webbuild_dir) && $(requirejs_dir)/build/build.sh frontpage.build.js
-	cd $(webbuild_dir) && $(requirejs_dir)/build/build.sh settings.build.js
+
+	perl -i -pe "s:version='[^']+':version='$(version)':" $(TOPSRCDIR)/setup.py
+	find $(static_dir) -name \*.html | xargs perl -i -pe 's:/dev/:/$(version)/:go'
+
+	cd $(static_dir) && $(requirejs_dir)/build/build.sh build.js
+	cd $(static_dir)/settings && $(requirejs_dir)/build/build.sh build.js
+	cd $(static_dir)/share && $(requirejs_dir)/build/build.sh build.js
 
 clean:
 	rm -rf $(objdir)
