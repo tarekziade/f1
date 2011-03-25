@@ -32,6 +32,7 @@ from pylons.wsgiapp import PylonsApp
 from routes.middleware import RoutesMiddleware
 
 from linkdrop.config.environment import load_environment
+from linkdrop.sstatus import ServicesStatusMiddleware
 from linkoauth.util import setup_config
 
 
@@ -92,6 +93,23 @@ def make_app(global_conf, full_stack=True, static_files=True, **app_conf):
         # Serve static files
         static_app = StaticURLParser(config['pylons.paths']['static_files'])
         app = Cascade([static_app, app])
+
+    # adding the services status middleware
+    if asbool(config['sstatus.enabled']):
+        # we need at least one
+        services = config['sstatus.services'].split(',')
+        tresholds = [float(tres) for tres in
+                     config['sstatus.tresholds'].split(',')]
+        retry_after = int(config.get('sstatus.retry_after', '600'))
+        cache_servers = config.get('sstatus.cache_servers')
+        if cache_servers is not None:
+            cache_servers = cache_servers.split(',')
+
+        if len(services) != len(tresholds):
+            raise ValueError('Bad Services Status config')
+
+        app = ServicesStatusMiddleware(app, services, tresholds, retry_after,
+                                       cache_servers)
 
     setup_config(config)
     app.config = config
